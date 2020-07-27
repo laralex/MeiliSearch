@@ -52,6 +52,9 @@ ureq = { version = "0.12.0", features = ["tls"], default-features = false }
 walkdir = "2.3.1"
 whoami = "0.8.1"
 
+# laralex
+biscuit = "0.4"
+
 [dependencies.sentry]
 version = "0.18.1"
 default-features = false

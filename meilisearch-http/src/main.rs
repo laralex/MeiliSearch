@@ -71,7 +71,7 @@ async fn main() -> Result<(), MainError> {
             .wrap(
                 Cors::new()
                     .send_wildcard()
-                    .allowed_headers(vec!["content-type", "x-meili-api-key"])
+                    .allowed_headers(vec!["content-type", "x-meili-api-key", "x-firebase-token"])
                     .max_age(86_400) // 24h
                     .finish(),
             )
@@ -145,6 +145,12 @@ pub fn print_launch_resume(opt: &Opt, data: &Data) {
     } else {
         eprintln!("No master key found; The server will accept unidentified requests. \
             If you need some protection in development mode, please export a key: export MEILI_MASTER_KEY=xxx");
+    }
+
+    if !data.firebase_admin_uids.is_empty() {
+        eprintln!("Firebase admin UIDs have been set. Requests to Meilisearch that change the data won't be authorized unless you provide one of these keys.");
+    } else {
+        eprintln!("No Firebase admin UIDs found; The server will not try to authorize requests based on given Firebase tokens.");
     }
 
     eprintln!();

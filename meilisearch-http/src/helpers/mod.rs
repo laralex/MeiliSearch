@@ -1,4 +1,5 @@
 pub mod authentication;
+pub mod authentication_firebase;
 pub mod meilisearch;
 pub mod normalize_path;
 

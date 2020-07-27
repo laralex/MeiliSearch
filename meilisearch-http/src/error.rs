@@ -44,8 +44,10 @@ pub enum Error {
     Internal(String),
     InvalidIndexUid,
     InvalidToken(String),
+    InvalidFirebaseToken(String),
     Maintenance,
     MissingAuthorizationHeader,
+    MissingFirebaseAuthorizationHeader,
     NotFound(String),
     OpenIndex(String),
     RetrieveDocument(u32, String),
@@ -68,8 +70,10 @@ impl ErrorCode for Error {
             Internal(_) => Code::Internal,
             InvalidIndexUid => Code::InvalidIndexUid,
             InvalidToken(_) => Code::InvalidToken,
+            InvalidFirebaseToken(_) => Code::InvalidFirebaseToken,
             Maintenance => Code::Maintenance,
             MissingAuthorizationHeader => Code::MissingAuthorizationHeader,
+            MissingFirebaseAuthorizationHeader => Code::MissingFirebaseAuthorizationHeader,
             NotFound(_) => Code::NotFound,
             OpenIndex(_) => Code::OpenIndex,
             RetrieveDocument(_, _) => Code::RetrieveDocument,
@@ -135,8 +139,16 @@ impl Error {
         Error::MissingAuthorizationHeader
     }
 
+    pub fn missing_firebase_authorization_header() -> Error {
+        Error::MissingFirebaseAuthorizationHeader
+    }
+
     pub fn invalid_token(err: impl fmt::Display) -> Error {
         Error::InvalidToken(err.to_string())
+    }
+
+    pub fn invalid_firebase_token(err: impl fmt::Display) -> Error {
+        Error::InvalidFirebaseToken(err.to_string())
     }
 
     pub fn not_found(err: impl fmt::Display) -> Error {
@@ -191,8 +203,10 @@ impl fmt::Display for Error {
             Self::Internal(err) => f.write_str(err),
             Self::InvalidIndexUid => f.write_str("Index must have a valid uid; Index uid can be of type integer or string only composed of alphanumeric characters, hyphens (-) and underscores (_)."),
             Self::InvalidToken(err) => write!(f, "Invalid API key: {}", err),
+            Self::InvalidFirebaseToken(err) => write!(f, "Invalid Firebase UID: {}", err),
             Self::Maintenance => f.write_str("Server is in maintenance, please try again later"),
             Self::MissingAuthorizationHeader => f.write_str("You must have an authorization token"),
+            Self::MissingFirebaseAuthorizationHeader => f.write_str("You must have a Firebase authorization token"),
             Self::NotFound(err) => write!(f, "{} not found", err),
             Self::OpenIndex(err) => write!(f, "Impossible to open index; {}", err),
             Self::RetrieveDocument(id, err) => write!(f, "impossible to retrieve the document with id: {}; {}", id, err),

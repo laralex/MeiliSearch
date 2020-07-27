@@ -65,35 +65,63 @@ where
         // it means that actix-web has an issue or someone changes the type `Data`.
         let data = req.app_data::<Data>().unwrap();
 
-        if data.api_keys.master.is_none() {
-            return Box::pin(svc.call(req));
-        }
-
-        let auth_header = match req.headers().get("X-Meili-API-Key") {
-            Some(auth) => match auth.to_str() {
-                Ok(auth) => auth,
-                Err(_) => return Box::pin(err(ResponseError::from(Error::MissingAuthorizationHeader).into())),
-            },
-            None => {
-                return Box::pin(err(ResponseError::from(Error::MissingAuthorizationHeader).into()));
-            }
+        let mut auth_header = "";
+        let authenticated_native = if data.api_keys.master.is_some() {
+            auth_header = match req.headers().get("X-Meili-API-Key") {
+                Some(auth) => match auth.to_str() {
+                    Ok(auth) => auth,
+                    Err(_) => return Box::pin(err(ResponseError::from(Error::MissingAuthorizationHeader).into())),
+                },
+                None => {
+                    return Box::pin(err(ResponseError::from(Error::MissingAuthorizationHeader).into()));
+                }
+            };
+            match self.acl {
+                Authentication::Admin => data.api_keys.master.as_deref() == Some(auth_header),
+                Authentication::Private => {
+                    data.api_keys.master.as_deref() == Some(auth_header)
+                        || data.api_keys.private.as_deref() == Some(auth_header)
+                }
+                Authentication::Public => {
+                    data.api_keys.master.as_deref() == Some(auth_header)
+                        || data.api_keys.private.as_deref() == Some(auth_header)
+                        || data.api_keys.public.as_deref() == Some(auth_header)
+                }
+            } // returns bool
+        } else { 
+            true 
         };
 
-        let authenticated = match self.acl {
-            Authentication::Admin => data.api_keys.master.as_deref() == Some(auth_header),
-            Authentication::Private => {
-                data.api_keys.master.as_deref() == Some(auth_header)
-                    || data.api_keys.private.as_deref() == Some(auth_header)
-            }
-            Authentication::Public => {
-                data.api_keys.master.as_deref() == Some(auth_header)
-                    || data.api_keys.private.as_deref() == Some(auth_header)
-                    || data.api_keys.public.as_deref() == Some(auth_header)
-            }
+        let mut auth_firebase_header = "";
+        let authenticated_firebase = if data.firebase_admin_uids.is_some() {
+            auth_firebase_header = match req.headers().get("x-firebase-token") {
+                Some(auth) => match auth.to_str() {
+                    Ok(auth) => auth,
+                    Err(_) => return Box::pin(err(ResponseError::from(Error::MissingFirebaseAuthorizationHeader).into())),
+                },
+                None => {
+                    return Box::pin(err(ResponseError::from(Error::MissingFirebaseAuthorizationHeader).into()));
+                }
+            };
+            match self.acl {
+                Authentication::Public => true,
+                _ => match super::authentication_firebase::authenticate(auth_firebase_header, data.firebase_admin_uids.as_ref().unwrap()) {
+                    Ok(is_authenticated) => is_authenticated,
+                    _ => false, // TODO(laralex): handle JWT parse error
+                },
+            } // returns bool
+        } else { 
+            true 
         };
 
-        if authenticated {
-            Box::pin(svc.call(req))
+        if authenticated_native {
+            if authenticated_firebase {
+                Box::pin(svc.call(req))
+            } else {
+                Box::pin(err(
+                    ResponseError::from(Error::InvalidFirebaseToken(auth_firebase_header.to_string())).into()
+                )) 
+            }
         } else {
             Box::pin(err(
                 ResponseError::from(Error::InvalidToken(auth_header.to_string())).into()

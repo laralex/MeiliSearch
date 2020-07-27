@@ -26,6 +26,7 @@ pub struct DataInner {
     pub db: Arc<Database>,
     pub db_path: String,
     pub api_keys: ApiKeys,
+    pub firebase_admin_uids: Option<Vec<String>>,
     pub server_pid: u32,
     pub http_payload_size_limit: usize,
 }
@@ -80,6 +81,7 @@ impl Data {
             db: db.clone(),
             db_path,
             api_keys,
+            firebase_admin_uids: crate::helpers::authentication_firebase::load_admin_uids(opt.firebase_config_path),
             server_pid,
             http_payload_size_limit,
         };

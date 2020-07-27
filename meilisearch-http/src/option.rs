@@ -26,6 +26,11 @@ pub struct Opt {
     #[structopt(long, env = "MEILI_MASTER_KEY")]
     pub master_key: Option<String>,
 
+    /// The path to a new line separated file with Firebase UIDs having admin rights
+    /// to update data on this Meilisearch instance
+    #[structopt(long, env = "MEILI_FIREBASE_CONFIG_PATH", parse(from_os_str))]
+    pub firebase_config_path: Option<PathBuf>,
+
     /// The Sentry DSN to use for error reporting. This defaults to the MeiliSearch Sentry project.
     /// You can disable sentry all together using the `--no-sentry` flag or `MEILI_NO_SENTRY` environment variable.
     #[cfg(all(not(debug_assertions), feature = "sentry"))]
