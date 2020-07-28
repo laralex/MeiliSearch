@@ -26,8 +26,8 @@ pub struct Opt {
     #[structopt(long, env = "MEILI_MASTER_KEY")]
     pub master_key: Option<String>,
 
-    /// The path to a new line separated file with Firebase UIDs having admin rights
-    /// to update data on this Meilisearch instance
+    /// The path to a new-line-separated text file with first line having Firebase Project ID
+    /// and subsequent lines having Firebase UIDs who have rights to update data on this Meilisearch instance
     #[structopt(long, env = "MEILI_FIREBASE_CONFIG_PATH", parse(from_os_str))]
     pub firebase_config_path: Option<PathBuf>,
 

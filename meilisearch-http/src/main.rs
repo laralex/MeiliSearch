@@ -147,10 +147,11 @@ pub fn print_launch_resume(opt: &Opt, data: &Data) {
             If you need some protection in development mode, please export a key: export MEILI_MASTER_KEY=xxx");
     }
 
-    if !data.firebase_admin_uids.is_empty() {
-        eprintln!("Firebase admin UIDs have been set. Requests to Meilisearch that change the data won't be authorized unless you provide one of these keys.");
+    if data.firebase_config.is_some() {
+        eprintln!("Firebase configuration is set. Firebase Project ID: {}", 
+            data.firebase_config.as_ref().unwrap().project_id);
     } else {
-        eprintln!("No Firebase admin UIDs found; The server will not try to authorize requests based on given Firebase tokens.");
+        eprintln!("No Firebase config; The server will not try to authorize requests based on received Firebase tokens.");
     }
 
     eprintln!();

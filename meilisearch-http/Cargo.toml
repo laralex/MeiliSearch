@@ -54,6 +54,7 @@ whoami = "0.8.1"
 
 # laralex
 biscuit = "0.4"
+lazy_static = "1.4"
 
 [dependencies.sentry]
 version = "0.18.1"

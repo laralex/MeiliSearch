@@ -7,6 +7,7 @@ use sha2::Digest;
 
 use crate::index_update_callback;
 use crate::option::Opt;
+use crate::helpers::authentication_firebase::{load_firebase_config, FirebaseConfig};
 
 #[derive(Clone)]
 pub struct Data {
@@ -26,7 +27,7 @@ pub struct DataInner {
     pub db: Arc<Database>,
     pub db_path: String,
     pub api_keys: ApiKeys,
-    pub firebase_admin_uids: Option<Vec<String>>,
+    pub firebase_config: Option<FirebaseConfig>,
     pub server_pid: u32,
     pub http_payload_size_limit: usize,
 }
@@ -77,11 +78,13 @@ impl Data {
 
         api_keys.generate_missing_api_keys();
 
+        let firebase_config = load_firebase_config(opt.firebase_config_path);
+
         let inner_data = DataInner {
             db: db.clone(),
             db_path,
             api_keys,
-            firebase_admin_uids: crate::helpers::authentication_firebase::load_admin_uids(opt.firebase_config_path),
+            firebase_config,
             server_pid,
             http_payload_size_limit,
         };

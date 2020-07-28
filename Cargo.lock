@@ -1570,6 +1570,7 @@ dependencies = [
  "http 0.1.21",
  "indexmap",
  "jemallocator",
+ "lazy_static",
  "log",
  "main_error",
  "meilisearch-core",

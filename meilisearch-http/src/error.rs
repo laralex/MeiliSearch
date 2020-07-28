@@ -203,7 +203,7 @@ impl fmt::Display for Error {
             Self::Internal(err) => f.write_str(err),
             Self::InvalidIndexUid => f.write_str("Index must have a valid uid; Index uid can be of type integer or string only composed of alphanumeric characters, hyphens (-) and underscores (_)."),
             Self::InvalidToken(err) => write!(f, "Invalid API key: {}", err),
-            Self::InvalidFirebaseToken(err) => write!(f, "Invalid Firebase UID: {}", err),
+            Self::InvalidFirebaseToken(err) => write!(f, "Invalid Firebase token: {}", err),
             Self::Maintenance => f.write_str("Server is in maintenance, please try again later"),
             Self::MissingAuthorizationHeader => f.write_str("You must have an authorization token"),
             Self::MissingFirebaseAuthorizationHeader => f.write_str("You must have a Firebase authorization token"),

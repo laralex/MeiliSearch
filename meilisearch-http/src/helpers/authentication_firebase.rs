@@ -1,4 +1,5 @@
-use serde::{Serialize, Deserialize};
+
+use serde::{Serialize, Deserialize, de, Deserializer};
 use biscuit::*;
 use biscuit::jws::*;
 use biscuit::jwa::*;
@@ -8,70 +9,17 @@ use std::io::{ BufRead, BufReader };
 use std::fs::File;
 use std::path::Path;
 use std::convert::AsRef;
+use std::str::FromStr;
+use std::fmt::Display;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PayloadExtras {
-    auth_time: Timestamp,
-    sub: String,
-}
+// TODO(laralex): check if keys are updated:
+// https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct HeaderExtras {
-    key_id: String,
-}
-
-// // this is a hack to check if token has one of permitted sub's
-// // this is NOT a usable and intuitive PartialEq
-// impl<'a, 'b> PartialEq for PrivateClaims<'a> {
-//     fn eq(&self, expectation: &'b Self) -> bool {
-//         use SingleOrMultiple::*;
-//         self.auth_time < expectation.auth_time && match (self.sub, expectation.sub) { 
-//             (Single(uid), Multiple(variants)) => variants.iter().any(|variant| variant == uid),
-//             _ => false,
-//         }
-//     }
-// }
-
-// impl<'a> Eq for PrivateClaims<'a> { }
-
-// #[derive(Debug, Clone, Serialize, Deserialize)]
-// pub struct PrivateHeader<'a> {
-//     key_id: SingleOrMultiple(&'a str),
-// }
-
-// // this is a hack to check if token has one of permitted key_id's
-// // this is NOT a usable and intuitive PartialEq
-// impl<'a, 'b> PartialEq for PrivateHeader<'a> {
-//     fn eq(&self, expectation: &'b Self) -> bool {
-//         use SingleOrMultiple::*;
-//         match (self.key_id, expectation.key_id) { 
-//             (Single(key_id), Multiple(variants)) => variants.iter().any(|variant| variant == key_id),
-//             _ => false,
-//         }
-//     }
-// }
-
-// impl<'a> Eq for PrivateHeader<'a> { }
-
-pub fn load_admin_uids<P: AsRef<Path>>(path: Option<P>) -> Option<Vec<String>>{
-    match path {
-        Some(p) => { 
-            let uids: Vec<_> = BufReader::new(File::open(p.as_ref()).ok()?).lines()
-            .filter_map(|result| match result {
-                Ok(line) if (1..=36).contains(&line.len()) => Some(line),
-                _ => None,
-            })
-            .collect();
-            if uids.is_empty() { None } else { Some(uids) }  
-        },
-        _ => None,
-    }
-}
-
-pub fn authenticate(token: &str, admin_uids: &Vec<String>) -> Result<bool, biscuit::errors::Error> {
-    // TODO(laralex): these keys theoretically can be changed, should sometimes check
-    // https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com
-    let public_firebase_keys = vec![
+static PUBLIC_FIREBASE_KEY_IDS: [&str; 2] = [
+    "6cfc235bd610facaec5eb0ade9589da95282decd",
+    "554a754778587c94c1673e8ea244616c0c043cbc",
+];
+static PUBLIC_FIREBASE_KEYS: [&str; 2] = [
         "-----BEGIN CERTIFICATE-----\n
         MIIDHDCCAgSgAwIBAgIIOvZ+ZDrIgmQwDQYJKoZIhvcNAQEFBQAwMTEvMC0GA1UE\n
         AxMmc2VjdXJldG9rZW4uc3lzdGVtLmdzZXJ2aWNlYWNjb3VudC5jb20wHhcNMjAw\n
@@ -111,48 +59,141 @@ pub fn authenticate(token: &str, admin_uids: &Vec<String>) -> Result<bool, biscu
         qo9DuE3rsINE8/2wIvxNEkx3+MKPT+z6eX5Snmv7klM=\n
         -----END CERTIFICATE-----\n",
     ];
-    
+
+#[derive(Clone)]
+pub struct FirebaseConfig {
+    pub project_id: String,
+    pub admin_uids: Vec<String>,
+}
+
+pub fn load_firebase_config<P: AsRef<Path>>(path: Option<P>) -> Option<FirebaseConfig>{
+    match path {
+        Some(p) => { 
+            let mut lines = BufReader::new(File::open(p.as_ref()).ok()?).lines();
+            let project_id = lines.next()?.ok()?;
+            let admin_uids: Vec<_> = lines.filter_map(|result| match result {
+                Ok(line) if (1..=36).contains(&line.len()) => Some(line),
+                _ => None,
+            }).collect();
+            if admin_uids.is_empty() { 
+                return None; 
+            }
+            Some(FirebaseConfig {
+                project_id,
+                admin_uids,
+            })  
+        },
+        _ => None,
+    }
+}
+
+pub enum AuthenticateFirebaseStatus {
+    InvalidHeader(String),
+    InvalidPayload(String),
+    InvalidSignature(String),
+    Uid(String),
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PayloadExtras {
+    //#[serde(deserialize_with = "deserialize_from_str")]
+    pub auth_time: Timestamp,
+    pub sub: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HeaderExtras {
+    pub kid: Option<String>,
+}
+
+// You can use this deserializer for any type that implements FromStr
+// and the FromStr::Err implements Display
+fn deserialize_from_str<'de, S, D>(deserializer: D) -> Result<S, D::Error>
+where
+    S: FromStr,      // Required for S::from_str...
+    S::Err: Display, // Required for .map_err(de::Error::custom)
+    D: Deserializer<'de>,
+{
+    let s: String = Deserialize::deserialize(deserializer)?;
+    S::from_str(&s).map_err(de::Error::custom)
+}
+
+pub fn authenticate(token: &str, firebase_config: &FirebaseConfig) -> Result<AuthenticateFirebaseStatus, biscuit::errors::Error> {
+    let token = JWT::<PayloadExtras, HeaderExtras>::new_encoded(&token);
+
+    // get header before verifying signature 
+    // (because we need "kid" from header to get public key)
+    let Header { 
+        registered: rfc_header, 
+        private: HeaderExtras { kid },
+    } = token.unverified_header()?;
+
+    if kid.is_none() {
+        return Ok(AuthenticateFirebaseStatus::InvalidHeader("Invalid header, no \"kid\" field".to_string()));
+    }
+    let kid = kid.unwrap();
+    // expected header 
     let expected_rfc_header = RegisteredHeader {
         algorithm: SignatureAlgorithm::RS256,
         ..Default::default()
     };
-    
+
+    // verify header
+    let key_id_idx = PUBLIC_FIREBASE_KEY_IDS.iter()
+        .position(|&id| id == kid.as_str());
+    let header_verification = 
+        rfc_header == expected_rfc_header &&
+        key_id_idx.is_some();
+    if !header_verification {
+        let status = AuthenticateFirebaseStatus::InvalidHeader(format!("Invalid header constraints - received key_id = {:?}, algorithm = {:?}", 
+            kid, rfc_header.algorithm));
+        return Ok(status);
+    }
+
+    // verify signature and decode payload
+    let public_key = Secret::PublicKey(PUBLIC_FIREBASE_KEYS[key_id_idx.unwrap()].into());
+    let (_, payload) = match token.decode(&public_key, SignatureAlgorithm::RS256) {
+        Err(jwt_e) => return Ok(AuthenticateFirebaseStatus::InvalidSignature(
+            format!("Invalid signature or its parse error: {}", jwt_e.to_string()))),
+        Ok(compact) => compact.unwrap_decoded()
+    };
+
+    let ClaimsSet {
+        registered: rfc_payload,
+        private: PayloadExtras { auth_time, sub },
+    } = payload;
+
+    // expected payload
+    let issuer = Some(FromStr::from_str(
+        format!("https://securetoken.google.com/{}", firebase_config.project_id).as_str()
+        ).unwrap());
+    let audience = Some(SingleOrMultiple::Single(
+        FromStr::from_str(
+            firebase_config.project_id.as_str()
+        ).unwrap()));
+
     let expected_rfc_payload = RegisteredClaims {
         expiry: Some(Utc::now().into()),
         issued_at: Some(Utc::now().into()),
-        // TODO(laralex): 
-        // audience: Some(FromStr::from_str("<PROJECT_ID>")),
-        // TODO(laralex): 
-        // issuer: Some(FromStr::from_str("https://securetoken.google.com/<PROJECT_ID>").unwrap()),
+        audience,
+        issuer,
         ..Default::default()
     };
 
-    let token = JWT::<PayloadExtras, HeaderExtras>::new_encoded(&token);
-
-    let Header::<HeaderExtras> { 
-        registered: rfc_header, 
-        private: HeaderExtras { key_id },
-    } = token.header()?;
-    let header_verification = 
-        rfc_header == &expected_rfc_header &&
-        public_firebase_keys.contains(&key_id.as_str());
-    if !header_verification {
-        return Ok( false )
-    }
-    
-    let ClaimsSet::<PayloadExtras> {
-        registered: rfc_payload,
-        private: PayloadExtras { auth_time, sub },
-    } = token.payload()?;
+    // verify payload
     let payload_verification = 
-        rfc_payload == &expected_rfc_payload &&
+        rfc_payload == expected_rfc_payload &&
         auth_time.timestamp() < Utc::now().timestamp() &&
-        admin_uids.contains(&sub);
+        firebase_config.admin_uids.contains(&sub);
     if !payload_verification {
-        return Ok( false )
+        let status = AuthenticateFirebaseStatus::InvalidPayload(format!("Invalid payload constraints - received auth_time = {:?}, expiry = {:?}, issued_at = {:?}, audience = {:?}, issuer = {:?}", 
+            auth_time.to_rfc3339(), 
+            rfc_payload.expiry.and_then(|t| Some(t.to_rfc3339())), 
+            rfc_payload.issued_at.and_then(|t| Some(t.to_rfc3339())), 
+            rfc_payload.audience, 
+            rfc_payload.issuer));
+        return Ok(status);
     }
 
-    let signature_verification = token.decode(&Secret::bytes_from_str(&key_id), SignatureAlgorithm::RS256).is_ok();
-    
-    Ok( signature_verification )
+    Ok(AuthenticateFirebaseStatus::Uid(sub.clone()))
 }
+
