@@ -148,8 +148,9 @@ pub fn print_launch_resume(opt: &Opt, data: &Data) {
     }
 
     if data.firebase_config.is_some() {
-        eprintln!("Firebase configuration is set. Firebase Project ID: {}", 
-            data.firebase_config.as_ref().unwrap().project_id);
+        eprintln!("Firebase configuration is set. Firebase Project ID: {}. Number of privileged users: {}", 
+            data.firebase_config.as_ref().unwrap().project_id,
+            data.firebase_config.as_ref().unwrap().privileged_firebase_uids.len());
     } else {
         eprintln!("No Firebase config; The server will not try to authorize requests based on received Firebase tokens.");
     }
