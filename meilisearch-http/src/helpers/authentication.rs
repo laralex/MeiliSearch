@@ -94,32 +94,34 @@ where
 
         let mut auth_firebase_message = "".to_string();
         let authenticated_firebase = if data.firebase_config.is_some() {
-            let auth_firebase_header = match req.headers().get("x-firebase-token") {
-                Some(auth) => match auth.to_str() {
-                    Ok(auth) => auth,
-                    Err(_) => return Box::pin(err(ResponseError::from(Error::MissingFirebaseAuthorizationHeader).into())),
-                },
-                None => {
-                    return Box::pin(err(ResponseError::from(Error::MissingFirebaseAuthorizationHeader).into()));
-                }
-            };
-            use super::authentication_firebase::{authenticate, AuthenticateFirebaseStatus};
             match self.acl {
                 Authentication::Public => true,
-                _ => match authenticate(auth_firebase_header, data.firebase_config.as_ref().unwrap()) {
-                    Ok(status) => match status {
-                        AuthenticateFirebaseStatus::Uid(_) => true,  
-                        AuthenticateFirebaseStatus::InvalidHeader(m)  | 
-                        AuthenticateFirebaseStatus::InvalidPayload(m) | 
-                        AuthenticateFirebaseStatus::InvalidSignature(m) => { 
-                            auth_firebase_message = m; 
-                            false 
+                _ => {
+                    let auth_firebase_header = match req.headers().get("x-firebase-token") {
+                        Some(auth) => match auth.to_str() {
+                            Ok(auth) => auth,
+                            Err(_) => return Box::pin(err(ResponseError::from(Error::MissingFirebaseAuthorizationHeader).into())),
                         },
-                    },
-                    Err(jwt_e) => { 
-                        auth_firebase_message = format!("Can't parse token header or payload: {}", jwt_e.to_string());
-                        false
-                    }, 
+                        None => {
+                            return Box::pin(err(ResponseError::from(Error::MissingFirebaseAuthorizationHeader).into()));
+                        }
+                    };
+                    use super::authentication_firebase::{authenticate, AuthenticateFirebaseStatus};
+                    match authenticate(auth_firebase_header, data.firebase_config.as_ref().unwrap()) {
+                        Ok(status) => match status {
+                            AuthenticateFirebaseStatus::Uid(_) => true,  
+                            AuthenticateFirebaseStatus::InvalidHeader(m)  | 
+                            AuthenticateFirebaseStatus::InvalidPayload(m) | 
+                            AuthenticateFirebaseStatus::InvalidSignature(m) => { 
+                                auth_firebase_message = m; 
+                                false 
+                            },
+                        },
+                        Err(jwt_e) => { 
+                            auth_firebase_message = format!("Can't parse token header or payload: {}", jwt_e.to_string());
+                            false
+                        }, 
+                    }
                 },
             } // returns bool
         } else { 
